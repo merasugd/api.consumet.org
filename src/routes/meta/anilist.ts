@@ -221,6 +221,25 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     if (fetchFiller === 'true' || fetchFiller === '1') fetchFiller = true;
     else fetchFiller = false;
 
+    let data = await anilist.fetchAnimeInfo(id, dub, fetchFiller as boolean);
+    let got = data.episodes ? data.episodes.map((ep, num) => {
+        let anime_title = typeof data.title === 'object' ? data.title.english || data.title.romaji || data.title.native || data.title.userPreferred : String(data.title);
+        let list_type = data.type?.toLocaleLowerCase() === 'movie' ? `Movie ${num+1}` : `Episode ${num+1}`;
+        let default_title = anime_title+' '+list_type;
+        let title = ep.title === `EP ${num+1}` ? default_title : ep.title;
+
+        return {
+          "id": ep.id,
+          "title": title || default_title,
+          "image": ep.image,
+          "imageHash": ep.imageHash,
+          "number": num+1,
+          "createdAt": ep.releaseDate || data.releaseDate,
+          "description": ep.description || data.description || 'MIRURO',
+          "url": ep.url
+        };
+    }) : [];
+
     try {
       redis
         ? reply
@@ -229,18 +248,13 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
               await cache.fetch(
                 redis,
                 `anilist:episodes;${id};${dub};${fetchFiller};${anilist.provider.name.toLowerCase()}`,
-                async () =>
-                  anilist.fetchEpisodesListById(
-                    id,
-                    dub as boolean,
-                    fetchFiller as boolean,
-                  ),
+                () => got,
                 dayOfWeek === 0 || dayOfWeek === 6 ? 60 * 120 : (60 * 60) / 2,
               ),
             )
         : reply
             .status(200)
-            .send(await anilist.fetchEpisodesListById(id, dub, fetchFiller as boolean));
+            .send(got);
     } catch (err) {
       return reply.status(404).send({ message: 'Anime not found' });
     }
