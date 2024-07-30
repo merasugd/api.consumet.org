@@ -221,8 +221,9 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     if (fetchFiller === 'true' || fetchFiller === '1') fetchFiller = true;
     else fetchFiller = false;
 
-    let data = await anilist.fetchAnimeInfo(id, dub, fetchFiller as boolean);
-    let got = data.episodes ? data.episodes.map((ep, num) => {
+    try {
+      let data = await anilist.fetchAnimeInfo(id, dub, fetchFiller as boolean);
+      let got = data.episodes ? data.episodes.map((ep, num) => {
         let anime_title = typeof data.title === 'object' ? data.title.english || data.title.romaji || data.title.native || data.title.userPreferred : String(data.title);
         let list_type = data.type?.toLocaleLowerCase() === 'movie' ? `Movie ${num+1}` : `Episode ${num+1}`;
         let default_title = anime_title+' '+list_type;
@@ -238,9 +239,8 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
           "description": ep.description || data.description || 'MIRURO',
           "url": ep.url
         };
-    }) : [];
+      }) : [];
 
-    try {
       redis
         ? reply
             .status(200)
