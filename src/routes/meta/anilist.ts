@@ -10,6 +10,8 @@ import { redis } from '../../main';
 import NineAnime from '@consumet/extensions/dist/providers/anime/9anime';
 import Gogoanime from '@consumet/extensions/dist/providers/anime/gogoanime';
 
+import { search as aniAdvSearch } from '../../extra/advance_search';
+
 const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
   fastify.get('/', (_, rp) => {
     rp.status(200).send({
@@ -66,19 +68,19 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
         if (!['WINTER', 'SPRING', 'SUMMER', 'FALL'].includes(season))
           return reply.status(400).send({ message: `${season} is not a valid season` });
 
-      const res = await anilist.advancedSearch(
+      const res = await aniAdvSearch({
         query,
         type,
         page,
         perPage,
         format,
-        sort as string[],
-        genres as string[],
+        sort: sort as string[],
+        genres: genres as string[],
         id,
         year,
         status,
         season,
-      );
+      })
 
       reply.status(200).send(res);
     },
