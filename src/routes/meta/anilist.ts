@@ -14,7 +14,7 @@ import { search as advSearch } from '../../extra/advanceSearch';
 
 require('dotenv').config();
 
-const nsfw_default = (process.env.NSFW && (process.env.NSFW.toLowerCase() === 'true' || process.env.NSFW.toLowerCase() === '1')) || undefined;
+const nsfw_default = false;
 
 const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
   fastify.get('/', (_, rp) => {
