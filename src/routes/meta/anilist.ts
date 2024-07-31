@@ -107,7 +107,8 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     const res = await advSearch({
       sort: ["TRENDING_DESC", "POPULARITY_DESC"],
       page,
-      perPage
+      perPage,
+      isAdult: nsfw_default,
     });
 
     if(res.data && res.data.error) return reply.status(res.status).send(res.data);
@@ -133,7 +134,8 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     const res = await advSearch({
       sort: ["POPULARITY_DESC"],
       page,
-      perPage
+      perPage,
+      isAdult: nsfw_default,
     });
 
     if(res.data && res.data.error) return reply.status(res.status).send(res.data);
