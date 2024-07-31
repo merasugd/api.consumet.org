@@ -3,7 +3,7 @@ import { MediaStatus } from './mediaStatus'
 
 let api = 'https://graphql.anilist.co';
 
-export const search = function(vars: any) {
+export const search = function(vars: any): Promise<any> {
     return new Promise(async(resolve, reject) => {
         vars.page = vars.page ? parseInt(String(vars.page)) : 1
         vars.perPage = vars.perPage ? parseInt(String(vars.perPage)) : 20
@@ -26,16 +26,18 @@ export const search = function(vars: any) {
         })
         .then(handleResponse)
         .then(res => {
+            if(res === null) return resolveError(500, "BAD REQUEST! NOT OK", resolve);
+
             let data = res.data;
-            if(!data) return reject(new Error('BAD'));
+            if(!data) return resolveError(500, "DID NOT RECEIVE ANY DATA.", resolve);
             
             let page = data.Page;
-            if(!page) return reject(new Error('404'));
+            if(!page) return resolveError(404, "DID NOT RECEIVE ANY PAGE DATA.", resolve);
             
             let info = page.pageInfo;
             let results = page.media;
 
-            if(!info || !results || typeof info !== "object" || !Array.isArray(results)) return reject(new Error('500'));
+            if(!info || !results || typeof info !== "object" || !Array.isArray(results)) return resolveError(404, "EMPTY RESULTS ARE RECEIVED", resolve);;
             
             const returnData = {
                 currentPage: data?.Page?.pageInfo?.currentPage ?? data.meta?.currentPage,
@@ -118,13 +120,22 @@ export const search = function(vars: any) {
             return resolve(returnData)
         })
         .catch(e => {
-            return reject(e);
+            return resolveError(500, `INTERNAL ERROR: ${e}`, resolve);;
         });
     });
 };
 
 function handleResponse(response: any) {
     return response.json().then(function (json: any) {
-        return response.ok ? json : Promise.reject(json);
+        return response.ok ? json : null;
     });
 };
+
+function resolveError(status: number, msg: string, resolve: any) {
+    return resolve({
+        status,
+        data: {
+            error: "[AnilistError]: "+msg
+        }
+    })
+}

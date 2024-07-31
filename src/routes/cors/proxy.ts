@@ -3,7 +3,7 @@ import axios from 'axios';
 import * as nodeUrl from 'url';
 
 const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
-    fastify.get('/', async(request: any, reply: FastifyReply) => {
+    fastify.get('/', async(request: FastifyRequest, reply: FastifyReply) => {
         try {
             // Set CORS headers
             reply.header('Access-Control-Allow-Origin', '*'); // '*' allows all origins
@@ -11,9 +11,9 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
             reply.header('Access-Control-Allow-Headers', request.headers['access-control-request-headers']);
 
             // Extract the target URL from the query or headers
-            const queryJson = request.query
+            const targetSource = request.query as { url: string } || { url: request.headers['target-url'] };
 
-            const targetURL = String(queryJson.url || 'google.com');
+            const targetURL = targetSource.url;
             if (!targetURL) {
                 return reply.status(400).send({ error: 'Target-URL header or url query parameter is missing' });
             }

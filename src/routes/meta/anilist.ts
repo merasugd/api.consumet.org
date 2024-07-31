@@ -12,6 +12,10 @@ import Gogoanime from '@consumet/extensions/dist/providers/anime/gogoanime';
 
 import { search as advSearch } from '../../extra/advanceSearch';
 
+require('dotenv').config();
+
+const nsfw_default = (process.env.NSFW && (process.env.NSFW.toLowerCase() === 'true' || process.env.NSFW.toLowerCase() === '1')) || undefined;
+
 const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
   fastify.get('/', (_, rp) => {
     rp.status(200).send({
@@ -23,14 +27,19 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
   });
 
   fastify.get('/:query', async (request: FastifyRequest, reply: FastifyReply) => {
-    const anilist = generateAnilistMeta();
-
     const query = (request.params as { query: string }).query;
 
     const page = (request.query as { page: number }).page;
     const perPage = (request.query as { perPage: number }).perPage;
 
-    const res = await anilist.search(query, page, perPage);
+    const res = await advSearch({
+      query,
+      page,
+      perPage,
+      isAdult: nsfw_default
+    });
+
+    if(res.data && res.data.error) return reply.status(res.status).send(res.data);
 
     reply.status(200).send(res);
   });
@@ -49,8 +58,10 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
       const status = (request.query as { status: string }).status;
       const year = (request.query as { year: number }).year;
       const season = (request.query as { season: string }).season;
+      let nsfw = (request.query as { nsfw: string | boolean }).nsfw;
 
-      const anilist = generateAnilistMeta();
+      if (nsfw === 'true' || nsfw === '1') nsfw = true;
+      else nsfw = nsfw_default || false;
 
       if (genres) {
         JSON.parse(genres as string).forEach((genre: string) => {
@@ -80,7 +91,10 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
         year,
         status,
         season,
+        isAdult: nsfw
       })
+
+      if(res.data && res.data.error) return reply.status(res.status).send(res.data);
 
       reply.status(200).send(res);
     },
@@ -90,7 +104,13 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     const page = (request.query as { page: number }).page;
     const perPage = (request.query as { perPage: number }).perPage;
 
-    const anilist = generateAnilistMeta();
+    const res = await advSearch({
+      sort: ["TRENDING_DESC", "POPULARITY_DESC"],
+      page,
+      perPage
+    });
+
+    if(res.data && res.data.error) return reply.status(res.status).send(res.data);
 
     redis
       ? reply
@@ -99,18 +119,24 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
             await cache.fetch(
               redis as Redis,
               `anilist:trending;${page};${perPage}`,
-              async () => await anilist.fetchTrendingAnime(page, perPage),
+              () => res,
               60 * 60,
             ),
           )
-      : reply.status(200).send(await anilist.fetchTrendingAnime(page, perPage));
+      : reply.status(200).send(res);
   });
 
   fastify.get('/popular', async (request: FastifyRequest, reply: FastifyReply) => {
     const page = (request.query as { page: number }).page;
     const perPage = (request.query as { perPage: number }).perPage;
 
-    const anilist = generateAnilistMeta();
+    const res = await advSearch({
+      sort: ["POPULARITY_DESC"],
+      page,
+      perPage
+    });
+
+    if(res.data && res.data.error) return reply.status(res.status).send(res.data);
 
     redis
       ? reply
@@ -119,11 +145,11 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
             await cache.fetch(
               redis as Redis,
               `anilist:popular;${page};${perPage}`,
-              async () => await anilist.fetchPopularAnime(page, perPage),
+              () => res,
               60 * 60,
             ),
           )
-      : reply.status(200).send(await anilist.fetchPopularAnime(page, perPage));
+      : reply.status(200).send(res);
   });
 
   fastify.get(
@@ -155,8 +181,6 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     const page = (request.query as { page: number }).page;
     const perPage = (request.query as { perPage: number }).perPage;
 
-    const anilist = generateAnilistMeta();
-
     if (typeof genres === 'undefined')
       return reply.status(400).send({ message: 'genres is required' });
 
@@ -166,7 +190,14 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
       }
     });
 
-    const res = await anilist.fetchAnimeGenres(JSON.parse(genres), page, perPage);
+    const res = await advSearch({
+      genres: JSON.parse(genres),
+      page,
+      perPage,
+      isAdult: nsfw_default
+    });
+
+    if(res.data && res.data.error) return reply.status(res.status).send(res.data);
 
     reply.status(200).send(res);
   });
@@ -187,11 +218,34 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
   ),
     fastify.get('/random-anime', async (request: FastifyRequest, reply: FastifyReply) => {
       const anilist = generateAnilistMeta();
+      
+      async function get(page: number = 0, tries: number = 0): Promise<any> {
+        let random_page = Math.floor(Math.random() * (50 - 1) + 1);
 
-      const res = await anilist.fetchRandomAnime().catch((err) => {
-        return reply.status(404).send({ message: 'Anime not found' });
-      });
-      reply.status(200).send(res);
+        if(tries > 50) return null
+
+        const all = await advSearch({
+          page: page !== 0 ? page : random_page,
+          perPage: 500,
+          isAdult: nsfw_default
+        });
+
+        if(all.data && all.data.error) return reply.status(all.status).send(all.data);
+        
+        if(all.results && Array.isArray(all.results) && all.results.length > 0) {
+          let finally_got = all.results[Math.floor(Math.random()*all.results.length)];
+          let id = finally_got.id;
+          if(!id) return await get(page !== 0 ? page+1 : 1, tries+1);
+
+          let returnData = Object.assign(finally_got, (await anilist.fetchAnilistInfoById(id)));
+          return returnData;
+        } else return await get(page !== 0 ? page+1 : 1, tries+1);
+      };
+
+      let got = await get();
+      if(got === null) return reply.status(404).send({ error: "Anime not found" });
+
+      reply.status(200).send(got);
     });
 
   fastify.get('/servers/:id', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -225,7 +279,10 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
 
     try {
       let data = await anilist.fetchAnimeInfo(id, dub, fetchFiller as boolean);
-      let got = data.episodes ? data.episodes.map((ep, num) => {
+      let raw = await anilist.fetchEpisodesListById(id, dub, fetchFiller as boolean);
+      let eps = Array.isArray(raw) && raw.length === data.totalEpisodes || raw.length > 0 ? raw : data.episodes;
+
+      let got = eps ? eps.map((ep, num) => {
         let anime_title = typeof data.title === 'object' ? data.title.english || data.title.romaji || data.title.native || data.title.userPreferred : String(data.title);
         let list_type = data.type?.toLocaleLowerCase() === 'movie' ? `Movie ${num+1}` : `Episode ${num+1}`;
         let default_title = anime_title+' '+list_type;
@@ -238,6 +295,7 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
           "imageHash": ep.imageHash,
           "number": num+1,
           "createdAt": ep.releaseDate || data.releaseDate,
+          "releaseDate": ep.releaseDate || data.releaseDate,
           "description": ep.description || data.description || 'MIRURO',
           "url": ep.url
         };
