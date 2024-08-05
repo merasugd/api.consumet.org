@@ -388,12 +388,13 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const episodeId = (request.params as { episodeId: string }).episodeId;
       const provider = (request.query as { provider?: string }).provider;
-      const server = (request.query as { server?: StreamingServers }).server;
+      const server = (request.query as { server?: StreamingServers }).server || StreamingServers.VidCloud;
 
       if (server && !Object.values(StreamingServers).includes(server))
         return reply.status(400).send('Invalid server');
 
-      let anilist = generateAnilistMeta(provider);
+      let prov = provider === 'zoro' ? new ANIME.Zoro() : new ANIME.Gogoanime();
+      let find = await prov.fetchEpisodeSources(episodeId, server);
 
       try {
         redis
@@ -402,16 +403,12 @@ const routes = async (fastify: FastifyInstance, options: RegisterOptions) => {
               .send(
                 await cache.fetch(
                   redis,
-                  `anilist:watch;${episodeId};${anilist.provider.name.toLowerCase()};${server}`,
-                  async () => anilist.fetchEpisodeSources(episodeId, server),
+                  `anilist:watch;${episodeId};${prov.name.toLowerCase()};${server}`,
+                  () => find,
                   600,
                 ),
               )
-          : reply.status(200).send(await anilist.fetchEpisodeSources(episodeId, server));
-
-        anilist = new META.Anilist(undefined, {
-          url: process.env.PROXY as string | string[],
-        });
+          : reply.status(200).send(find);
       } catch (err) {
         reply
           .status(500)
